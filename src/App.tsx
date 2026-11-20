@@ -7,6 +7,7 @@ import appIcon from "./assets/projectdesk-icon.svg";
 
 type Section = "home" | "daily" | "notes" | "settings";
 type TaskFilter = "all" | "today" | "week" | "done";
+type DialogRequest = { action: "delete-note" | "delete-task" | "delete-group" | "rename-group"; id: number; label: string };
 type IconName = "home" | "calendar" | "notes" | "settings" | "plus" | "check" | "chevron" | "search" | "clock" | "folder" | "trash" | "arrow" | "edit" | "sun" | "pin" | "more";
 
 const isoDay = (d: Date) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
@@ -36,7 +37,7 @@ function Icon({ name, size = 19 }: { name: IconName; size?: number }) {
     pin: <><path d="M16 3 8 3l1 6-4 4v2h14v-2l-4-4zM12 15v7"/></>,
     more: <><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
   };
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" {...common}>{shapes[name]}</svg>;
+  return <svg aria-hidden="true" width={size} height={size} viewBox={name === "settings" ? "-1.5 -1.5 27 27" : "0 0 24 24"} {...common}>{shapes[name]}</svg>;
 }
 
 function Disclosure({ open, children }: { open: boolean; children: ReactNode }) {
@@ -72,6 +73,10 @@ function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<DialogRequest | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [renameGroupValue, setRenameGroupValue] = useState("");
   const [quickText, setQuickText] = useState("");
   const [busyNote, setBusyNote] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -142,10 +147,51 @@ function App() {
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(flushNotes, 650);
   };
-  const deleteNote = async (id: number) => {
-    if (!window.confirm("Удалить заметку без возможности восстановления?")) return;
-    pendingNotes.current.delete(id); flushNotes();
-    try { await db.deleteNote(id); await reloadNotes(); setSelectedNoteId(null); } catch (e) { setError(String(e)); }
+  const openDialog = (request: DialogRequest) => {
+    setDialogError(null);
+    setRenameGroupValue(request.action === "rename-group" ? request.label : "");
+    setDialog(request);
+  };
+  const closeDialog = () => { if (!dialogBusy) { setDialog(null); setDialogError(null); } };
+  const confirmDialog = async () => {
+    const request = dialog;
+    if (!request || dialogBusy) return;
+    const newName = renameGroupValue.trim();
+    if (request.action === "rename-group" && !newName) return;
+    setDialogBusy(true);
+    setDialogError(null);
+    try {
+      switch (request.action) {
+        case "delete-note":
+          pendingNotes.current.delete(request.id);
+          flushNotes();
+          await db.deleteNote(request.id);
+          await reloadNotes();
+          setSelectedNoteId(null);
+          break;
+        case "delete-task":
+          await db.deleteTask(request.id);
+          await reloadTasks();
+          break;
+        case "delete-group":
+          await db.deleteGroup(request.id, "keep-tasks");
+          await reloadTasks();
+          break;
+        case "rename-group":
+          if (newName !== request.label) {
+            await db.renameGroup(request.id, newName);
+            await reloadTasks();
+          }
+          break;
+      }
+      setDialog(null);
+    } catch (e) {
+      const message = String(e);
+      setDialogError(message);
+      setError(message);
+    } finally {
+      setDialogBusy(false);
+    }
   };
   const currentDay = today();
   const active = tasks.filter(t => !t.doneAt).sort(sortTasks);
@@ -164,7 +210,7 @@ function App() {
     {!compact && <button type="button" title="Сменить приоритет" className={`priority ${t.priority ? `p${t.priority}` : ""}`} onClick={() => void runTasks(() => db.setPriority(t.id, nextPriority(t.priority)))}>{t.priority ? priorityText[t.priority] : "Приоритет"}</button>}
     {!compact && <input aria-label="Дедлайн" className="deadline-input" type="date" value={t.deadline ?? ""} onChange={e => void runTasks(() => db.setDeadline(t.id, e.target.value || null))}/>}
     {compact && t.deadline && <span className="task-when">{formatDate(t.deadline)}</span>}
-    {!compact && <button type="button" className="icon-action task-delete" title="Удалить задачу" onClick={() => { if (window.confirm(`Удалить задачу «${t.title}»?`)) void runTasks(() => db.deleteTask(t.id)); }}><Icon name="trash" size={16}/></button>}
+    {!compact && <button type="button" className="icon-action task-delete" title="Удалить задачу" onClick={() => openDialog({ action: "delete-task", id: t.id, label: t.title })}><Icon name="trash" size={16}/></button>}
   </div>;
 
   const home = <div className="page home-page">
@@ -199,7 +245,7 @@ function App() {
       {showTaskForm && <form className="new-task-panel" onSubmit={e => { e.preventDefault(); void addTask(); }}><input autoFocus placeholder="Что нужно сделать?" value={taskTitle} onChange={e => setTaskTitle(e.target.value)}/><div className="new-task-controls"><select value={taskGroup} onChange={e => setTaskGroup(e.target.value)}><option value="">Без группы</option>{groups.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}</select><input type="date" aria-label="Дата выполнения" value={taskDate} onChange={e => setTaskDate(e.target.value)}/><select value={taskPriority ?? ""} onChange={e => setTaskPriority(e.target.value ? Number(e.target.value) as Priority : null)}><option value="">Без приоритета</option>{([1, 2, 3, 4] as Priority[]).map(p => <option key={p} value={p}>{priorityText[p]}</option>)}</select><button type="button" className="quiet-btn" onClick={() => setShowTaskForm(false)}>Отмена</button><button className="primary-btn" type="submit">Добавить</button></div></form>}
       <div className="board-actions"><span>{filtered.length} {filtered.length === 1 ? "задача" : "задач"}</span><button type="button" onClick={() => setShowGroupForm(x => !x)}><Icon name="plus" size={15}/> Группа</button></div>
       {showGroupForm && <form className="group-add" onSubmit={e => { e.preventDefault(); void createGroup(); }}><input autoFocus placeholder="Название группы" value={newGroup} onChange={e => setNewGroup(e.target.value)}/><button type="submit" className="primary-btn">Создать</button></form>}
-      {groups.map(g => <section key={g.id} className="task-group" onDragOver={e => e.preventDefault()} onDrop={() => { if (draggingId.current !== null) void runTasks(() => db.moveTask(draggingId.current!, g.id)); draggingId.current = null; }}><div className="group-heading"><button type="button" className="group-fold" aria-expanded={!expanded[`group-${g.id}`]} onClick={() => setExpanded(x => ({ ...x, [`group-${g.id}`]: !x[`group-${g.id}`] }))}><Icon name="chevron" size={16}/><Icon name="folder" size={17}/><b>{g.name}</b><small>{groupTasks(g.id).length}</small></button><button type="button" className="icon-action" title="Переименовать группу" onClick={() => { const value = window.prompt("Новое название группы", g.name)?.trim(); if (value && value !== g.name) void runTasks(() => db.renameGroup(g.id, value)); }}><Icon name="edit" size={15}/></button><button type="button" className="icon-action" title="Удалить группу (задачи сохранятся)" onClick={() => { if (window.confirm(`Удалить группу «${g.name}»? Задачи останутся.`)) void runTasks(() => db.deleteGroup(g.id, "keep-tasks")); }}><Icon name="trash" size={15}/></button></div><Disclosure open={!expanded[`group-${g.id}`]}><div>{groupTasks(g.id).length ? groupTasks(g.id).map(t => renderTask(t)) : <div className="group-empty">Задач нет</div>}</div></Disclosure></section>)}
+      {groups.map(g => <section key={g.id} className="task-group" onDragOver={e => e.preventDefault()} onDrop={() => { if (draggingId.current !== null) void runTasks(() => db.moveTask(draggingId.current!, g.id)); draggingId.current = null; }}><div className="group-heading"><button type="button" className="group-fold" aria-expanded={!expanded[`group-${g.id}`]} onClick={() => setExpanded(x => ({ ...x, [`group-${g.id}`]: !x[`group-${g.id}`] }))}><Icon name="chevron" size={16}/><Icon name="folder" size={17}/><b>{g.name}</b><small>{groupTasks(g.id).length}</small></button><button type="button" className="icon-action" title="Переименовать группу" onClick={() => openDialog({ action: "rename-group", id: g.id, label: g.name })}><Icon name="edit" size={15}/></button><button type="button" className="icon-action" title="Удалить группу (задачи сохранятся)" onClick={() => openDialog({ action: "delete-group", id: g.id, label: g.name })}><Icon name="trash" size={15}/></button></div><Disclosure open={!expanded[`group-${g.id}`]}><div>{groupTasks(g.id).length ? groupTasks(g.id).map(t => renderTask(t)) : <div className="group-empty">Задач нет</div>}</div></Disclosure></section>)}
       <section className="task-group" onDragOver={e => e.preventDefault()} onDrop={() => { if (draggingId.current !== null) void runTasks(() => db.moveTask(draggingId.current!, null)); draggingId.current = null; }}><div className="group-heading"><button type="button" className="group-fold" aria-expanded={!expanded.ungrouped} onClick={() => setExpanded(x => ({ ...x, ungrouped: !x.ungrouped }))}><Icon name="chevron" size={16}/><b>Без группы</b><small>{groupTasks(null).length}</small></button></div><Disclosure open={!expanded.ungrouped}><div>{groupTasks(null).length ? groupTasks(null).map(t => renderTask(t)) : <div className="group-empty">{loaded ? "Задач нет" : "Загрузка…"}</div>}</div></Disclosure></section>
       </div>
     </div>{dueSoon.length > 0 && <aside className="daily-aside"><section className="glass-panel aside-box"><h2>Ближайшие дедлайны</h2>{dueSoon.map(t => <div key={t.id} className="aside-event"><Icon name="calendar" size={17}/><span><b>{t.title}</b><small>{t.deadline ? formatDate(t.deadline) : ""}</small></span></div>)}</section></aside>}</div>
@@ -219,7 +265,7 @@ function App() {
   const notesPage = <div className="page notes-page"><div className="page-header"><div><h1>Заметки</h1></div><button type="button" className="primary-btn" onClick={() => void createNote(selectedCategory ?? "")}><Icon name="plus" size={18}/> Новая заметка</button></div>
     <div className="notes-workspace"><aside className="glass-panel categories"><h3>Категории</h3><button type="button" className={`category-row ${selectedCategory === null ? "selected" : ""}`} onClick={() => setSelectedCategory(null)}><Icon name="folder" size={17}/>Все заметки <span>{notes.length}</span></button>{cats.map(c => <button type="button" key={c} className={`category-row ${selectedCategory === c ? "selected" : ""}`} onClick={() => { setSelectedCategory(c); setSelectedNoteId(null); }}><Icon name="folder" size={17}/>{c}<span>{notes.filter(n => n.category.trim() === c).length}</span></button>)}</aside>
       <div className="glass-panel note-browser"><div className="search-field"><Icon name="search" size={18}/><input aria-label="Поиск по заметкам" placeholder="Поиск по заметкам…" value={noteSearch} onChange={e => setNoteSearch(e.target.value)}/></div><div className="note-list">{matchingNotes.length ? matchingNotes.map(n => <button key={n.id} type="button" className={`note-card ${selectedNote?.id === n.id ? "selected" : ""}`} onClick={() => { flushNotes(); setSelectedNoteId(n.id); setPreview(false); }}><strong>{n.title.trim() || "Без названия"}</strong><span>{n.body.trim().split("\n").find(Boolean)?.slice(0, 80) || "Пустая заметка"}</span><small>{n.category || "Без категории"} · {new Date(n.updatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</small></button>) : <div className="empty-state">Заметок не найдено.</div>}</div></div>
-      <section className="glass-panel note-editor">{selectedNote ? <><div className="note-editor-top"><><input list="pd-note-categories" aria-label="Категория заметки" placeholder="Категория" value={selectedNote.category} onChange={e => patchNote(selectedNote, { category: e.target.value })}/><datalist id="pd-note-categories">{cats.map(c => <option key={c} value={c}/>)}</datalist></><button type="button" className="icon-action" title="Удалить заметку" onClick={() => void deleteNote(selectedNote.id)}><Icon name="trash" size={17}/></button></div>
+      <section className="glass-panel note-editor">{selectedNote ? <><div className="note-editor-top"><><input list="pd-note-categories" aria-label="Категория заметки" placeholder="Категория" value={selectedNote.category} onChange={e => patchNote(selectedNote, { category: e.target.value })}/><datalist id="pd-note-categories">{cats.map(c => <option key={c} value={c}/>)}</datalist></><button type="button" className="icon-action" title="Удалить заметку" onClick={() => openDialog({ action: "delete-note", id: selectedNote.id, label: selectedNote.title.trim() || "Без названия" })}><Icon name="trash" size={17}/></button></div>
         <input className="note-title-input" placeholder="Название заметки" value={selectedNote.title} onChange={e => patchNote(selectedNote, { title: e.target.value })}/><p className="note-timestamp">Изменено {new Date(selectedNote.updatedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · автосохранение</p>
         <div className="editor-toolbar"><button type="button" title="Жирный" onClick={() => patchNote(selectedNote, { body: selectedNote.body + "**жирный текст**" })}><b>B</b></button><button type="button" title="Курсив" onClick={() => patchNote(selectedNote, { body: selectedNote.body + "*курсив*" })}><i>I</i></button><button type="button" title="Заголовок" onClick={() => patchNote(selectedNote, { body: selectedNote.body + "\n## Заголовок\n" })}>H2</button><button type="button" title="Список" onClick={() => patchNote(selectedNote, { body: selectedNote.body + "\n- Пункт списка" })}>≡</button><button type="button" title="Чекбокс" onClick={() => patchNote(selectedNote, { body: selectedNote.body + "\n- [ ] Новая задача" })}>☑</button><span className="toolbar-spacer"/><button type="button" className={preview ? "selected" : ""} onClick={() => setPreview(x => !x)}>{preview ? "Редактор" : "Просмотр"}</button></div>
         {preview ? <div className="markdown-preview">{notePreview(selectedNote.body)}</div> : <textarea className="note-body-input" aria-label="Текст заметки" placeholder="Начни писать…" value={selectedNote.body} onChange={e => patchNote(selectedNote, { body: e.target.value })}/>}
@@ -228,9 +274,28 @@ function App() {
     </div>
   </div>;
 
-  const settings = <div className="page settings-page"><div className="page-header"><div><h1>Настройки</h1></div></div><section className="glass-panel settings-panel"><label className="setting-item"><span><b>Твоё имя</b><small>Показывается в приветствии на главной.</small></span><input placeholder="Как к тебе обращаться?" value={name} onChange={e => { setName(e.target.value); try { localStorage.setItem("pd-name", e.target.value); } catch { /* no storage */ } }}/></label><label className="setting-item"><span><b>Фон «Тёплый вечер»</b><small>Убери фотографию, если нужен более спокойный интерфейс.</small></span><input type="checkbox" checked={showBackground} onChange={e => { setShowBackground(e.target.checked); try { localStorage.setItem("pd-background", e.target.checked ? "on" : "off"); } catch { /* no storage */ } }}/></label><div className="setting-info">Данные задач и заметок по-прежнему хранятся локально в SQLite. Финансовый раздел убран из интерфейса. Старые записи базы не удаляются автоматически.</div></section></div>;
+  const settings = <div className="page settings-page"><div className="page-header"><div><h1>Настройки</h1></div></div><section className="glass-panel settings-panel"><label className="setting-item"><span><b>Твоё имя</b><small>Показывается в приветствии на главной.</small></span><input placeholder="Как к тебе обращаться?" value={name} onChange={e => { setName(e.target.value); try { localStorage.setItem("pd-name", e.target.value); } catch { /* no storage */ } }}/></label><label className="setting-item"><span><b>Фон «Тёплый вечер»</b><small>Убери фотографию, если нужен более спокойный интерфейс.</small></span><input type="checkbox" checked={showBackground} onChange={e => { setShowBackground(e.target.checked); try { localStorage.setItem("pd-background", e.target.checked ? "on" : "off"); } catch { /* no storage */ } }}/></label></section></div>;
 
-  return <div className={`app-shell ${showBackground ? "photo-background" : "plain-background"}`}><SideBar section={section} go={changeSection}/><main className="main-area">{error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => setError(null)}>×</button></div>}{section === "home" ? home : section === "daily" ? daily : section === "notes" ? notesPage : settings}</main></div>;
+  return <div className={`app-shell ${showBackground ? "photo-background" : "plain-background"}`}>
+    <SideBar section={section} go={changeSection}/>
+    <main className="main-area">
+      {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => setError(null)}>×</button></div>}
+      {section === "home" ? home : section === "daily" ? daily : section === "notes" ? notesPage : settings}
+    </main>
+    {dialog && <div className="app-dialog-overlay" onMouseDown={e => { if (e.target === e.currentTarget) closeDialog(); }}>
+      <form className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); closeDialog(); } }} onSubmit={e => { e.preventDefault(); void confirmDialog(); }}>
+        <h2 id="app-dialog-title">{dialog.action === "rename-group" ? "Переименовать группу" : dialog.action === "delete-note" ? "Удалить заметку?" : dialog.action === "delete-task" ? "Удалить задачу?" : "Удалить группу?"}</h2>
+        {dialog.action === "rename-group"
+          ? <label className="app-dialog-label">Название группы<input autoFocus value={renameGroupValue} onChange={e => setRenameGroupValue(e.target.value)} maxLength={120}/></label>
+          : <p className="app-dialog-message">«{dialog.label}»{dialog.action === "delete-group" ? " — задачи останутся, но группа будет удалена." : " будет удалена без возможности восстановления."}</p>}
+        {dialogError && <p className="app-dialog-error" role="alert">{dialogError}</p>}
+        <div className="app-dialog-actions">
+          <button type="button" className="quiet-btn" onClick={closeDialog} autoFocus={dialog.action !== "rename-group"} disabled={dialogBusy}>Отмена</button>
+          <button type="submit" className={dialog.action === "rename-group" ? "primary-btn" : "dialog-danger"} disabled={dialogBusy || (dialog.action === "rename-group" && !renameGroupValue.trim())}>{dialogBusy ? "Сохраняем…" : dialog.action === "rename-group" ? "Сохранить" : "Удалить"}</button>
+        </div>
+      </form>
+    </div>}
+  </div>;
 }
 
 export default App;
