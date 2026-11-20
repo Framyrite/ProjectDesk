@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="ProjectDesk icon">
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="#241d1c"/>
+  <path d="M260 205H706Q792 205 792 291V728Q792 800 721 800H260Q200 800 200 740V302Q200 205 260 205Z" fill="#d89b5d"/>
+  <path d="M383 296H755Q844 296 844 383V742Q844 824 761 824H383Q296 824 296 737V385Q296 296 383 296Z" fill="#f0deca"/>
+  <path d="M397 443H708M397 535H684M397 627H572" stroke="#856b5b" stroke-width="38" stroke-linecap="round"/>
+  <path d="M650 707L703 760L811 642" fill="none" stroke="#382a26" stroke-width="43" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
