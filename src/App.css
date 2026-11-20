@@ -5,7 +5,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
 button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #f0b879;outline-offset:2px}
 #root{height:100vh;min-height:600px}
 .app-shell{--accent:#e4ad79;--accent-soft:#d39a67;--text:#eee8e1;--muted:#b8ada4;--border:rgba(235,215,194,.11);--surface:rgba(31,29,29,.86);--surface-strong:rgba(30,27,26,.95);--surface-soft:rgba(102,76,58,.16);height:100%;display:flex;position:relative;isolation:isolate;overflow:hidden;background:#171617;color:var(--text)}
-.app-shell::before{content:"";z-index:-2;position:absolute;inset:-3px;background-image:url("./assets/warm-evening.jpg");background-position:center center;background-size:cover;filter:saturate(.62) brightness(.77) blur(1.5px)}
+.app-shell::before{content:"";z-index:-2;position:absolute;inset:-3px;background-image:url("./assets/warm-evening.jpg");background-position:center center;background-size:cover;filter:saturate(.62) brightness(var(--wallpaper-brightness,.77)) blur(1.5px)}
 .app-shell::after{content:"";z-index:-1;position:absolute;inset:0;background:linear-gradient(90deg,rgba(17,16,16,.79) 0%,rgba(19,18,19,.69) 43%,rgba(26,20,19,.45) 79%,rgba(24,17,16,.42) 100%);pointer-events:none}
 .app-shell.plain-background::before{background-image:radial-gradient(circle at 83% 0%,#4f3428,transparent 45%),linear-gradient(135deg,#1f1a1c,#271a17 58%,#1c1615)}
 .app-shell.plain-background::after{background:linear-gradient(90deg,rgba(16,12,11,.25),transparent)}
@@ -104,3 +104,90 @@ h1,h2,h3,h4,p{margin-top:0}h1{font-size:clamp(28px,2.7vw,43px);line-height:1.16;
 .settings-link{align-items:center;min-height:43px}
 .task-delete{opacity:.8;flex-shrink:0}
 .task-delete:hover{opacity:1;color:#f0ad9c}
+
+
+/* Calendar: task deadlines, not a habit tracker. */
+.calendar-panel{padding:19px 21px 18px}
+.calendar-header,.calendar-month-row,.calendar-detail-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.calendar-header h2{font-size:17px;font-weight:620;margin:0}
+.calendar-today{border:0;background:none;color:#d0aa8a;font-size:12px;padding:5px 7px;border-radius:5px}
+.calendar-today:hover{background:rgba(230,187,151,.09);color:#f0c7a2}
+.calendar-month-row{margin-top:14px;color:#e7dbd0;font-size:13px;font-weight:600}
+.calendar-month-row>span{text-transform:capitalize}
+.calendar-navigation{display:flex;align-items:center;gap:3px}
+.calendar-navigation button{display:grid;place-items:center;width:29px;height:29px;border:0;border-radius:6px;background:transparent;color:#c8b8ad}
+.calendar-navigation button:hover{background:rgba(240,214,191,.08);color:#f1e6dd}
+.calendar-prev svg{transform:rotate(180deg)}
+.calendar-weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;text-align:center}
+.calendar-weekdays{margin:11px 0 6px;color:#a99b90;font-size:11px}
+.calendar-weekdays span{padding:3px 0}
+.calendar-day,.calendar-blank{height:36px;min-width:0}
+.calendar-day{display:flex;align-items:center;justify-content:center;position:relative;border:1px solid transparent;border-radius:7px;background:transparent;color:#ded4cb;font-size:12px;font-variant-numeric:tabular-nums}
+.calendar-day:hover{background:rgba(225,186,148,.12)}
+.calendar-day.today:not(.selected){border-color:rgba(226,178,133,.45)}
+.calendar-day.selected{background:#bc855b;color:#17120f;font-weight:720}
+.calendar-day.selected:hover{background:#d49b6c}
+.calendar-dot{position:absolute;width:4px;height:4px;bottom:3px;border-radius:50%;background:#dca06c;left:calc(50% - 2px)}
+.calendar-dot.completed{background:#8d9c88}
+.calendar-day.selected .calendar-dot{background:#33241d}
+.calendar-day:focus-visible{outline:2px solid #eac39f;outline-offset:1px}
+.calendar-day-details{border-top:1px solid var(--border);margin-top:15px;padding-top:13px}
+.calendar-detail-heading strong{font-size:13px;font-weight:610;color:#e9ded4;text-transform:capitalize}
+.calendar-detail-heading button{display:flex;align-items:center;gap:5px;border:0;border-radius:6px;background:transparent;color:#d9ae8a;font-size:12px;padding:5px 7px}
+.calendar-detail-heading button:hover{background:rgba(230,187,151,.09)}
+.calendar-task-list{max-height:176px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(210,170,133,.28) transparent;margin-top:10px}
+.calendar-task{display:flex;align-items:center;gap:9px;min-height:37px;padding:6px 0;border-top:1px solid rgba(228,209,190,.065);font-size:13px;color:#e4d8ce}
+.calendar-task span:last-child{min-width:0;overflow-wrap:anywhere}
+.calendar-task.completed span:last-child{text-decoration:line-through;color:#968c83}
+.calendar-task .task-check.small{width:19px;height:19px}
+.calendar-task .check-visual{transform:scale(.85)}
+.calendar-empty{margin:0;color:#b09f91;font-size:12px;line-height:1.6;padding:3px 0}
+
+/* Consistent native-style settings. */
+.settings-page .page-header{max-width:760px;margin:0 auto 21px;width:100%}
+.settings-page .page-header h1{margin:0}
+.settings-panel{max-width:760px;width:100%;margin:0 auto;padding:7px 26px;background:rgba(27,26,26,.93)}
+.settings-panel .setting-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(165px,255px);align-items:center;column-gap:24px;min-height:95px;padding:20px 0;border-bottom:1px solid rgba(236,214,197,.11)}
+.settings-panel .setting-item:last-child{border-bottom:0}
+.settings-panel .setting-item>span{min-width:0;display:flex;flex-direction:column;gap:6px}
+.settings-panel .setting-item b{font-size:14px;font-weight:630;line-height:1.3}
+.settings-panel .setting-item small{font-size:12px;line-height:1.45;color:#ad9f94}
+.settings-panel .setting-item input[type="text"]{width:100%;max-width:none;min-height:42px;background:rgba(19,18,18,.6);color:#f3e9e1;border:1px solid rgba(231,202,180,.16);border-radius:8px;padding:10px 12px}
+.settings-panel .setting-item input[type="checkbox"]{justify-self:end;appearance:none;-webkit-appearance:none;position:relative;display:block;width:42px;height:25px;margin:0;border-radius:20px;background:#4d4540;border:1px solid rgba(241,212,189,.19);cursor:pointer;transition:background 170ms ease}
+.settings-panel .setting-item input[type="checkbox"]::after{content:"";position:absolute;left:3px;top:3px;width:17px;height:17px;border-radius:50%;background:#e1d4ca;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform 170ms ease}
+.settings-panel .setting-item input[type="checkbox"]:checked{background:#c88f62;border-color:#c88f62}
+.settings-panel .setting-item input[type="checkbox"]:checked::after{transform:translateX(17px);background:#241c18}
+.settings-panel .setting-item input[type="checkbox"]:focus-visible{outline:2px solid #ecc49d;outline-offset:3px}
+.brightness-control{display:flex;align-items:center;gap:12px;width:100%;min-width:0}
+.brightness-control input[type="range"]{appearance:auto;-webkit-appearance:slider-horizontal;flex:1;min-width:0;margin:0;accent-color:#d49e70;cursor:pointer}
+.brightness-control input:disabled{cursor:not-allowed;opacity:.4}
+.brightness-control output{display:block;width:45px;flex-shrink:0;text-align:right;color:#cdb9aa;font-size:12px;font-variant-numeric:tabular-nums}
+.density-selector{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;padding:3px;width:100%;border-radius:9px;background:rgba(20,19,19,.62);border:1px solid rgba(228,197,174,.13)}
+.density-selector button{font-size:12px;line-height:1.2;min-height:34px;white-space:nowrap;background:none;border:0;border-radius:6px;color:#b9a99d;padding:6px}
+.density-selector button.selected{background:rgba(220,172,135,.21);color:#f1d4bb}
+.density-selector button:hover:not(.selected){color:#efded0;background:rgba(240,220,195,.07)}
+
+/* Optional compact mode changes spacing only, never information visibility. */
+.app-shell.density-compact .page{padding-top:25px;padding-bottom:27px}
+.app-shell.density-compact .hero{min-height:109px}
+.app-shell.density-compact .home-left,.app-shell.density-compact .home-right{gap:12px}
+.app-shell.density-compact .home-grid{gap:13px}
+.app-shell.density-compact .glass-panel{border-radius:10px}
+.app-shell.density-compact .today-panel{padding:16px 20px}
+.app-shell.density-compact .upcoming{padding:16px 20px}
+.app-shell.density-compact .calendar-panel{padding:15px 18px}
+.app-shell.density-compact .task-line{min-height:39px}
+.app-shell.density-compact .calendar-day,.app-shell.density-compact .calendar-blank{height:31px}
+.app-shell.density-compact .nav-link{height:37px}
+.app-shell.density-compact .page-header{margin-bottom:16px}
+.app-shell.density-compact .daily-board{min-height:260px;padding-bottom:15px}
+.app-shell.density-compact .tab-bar,.app-shell.density-compact .tab-bar button{min-height:53px;height:53px}
+.app-shell.density-compact .group-heading{height:40px}
+.app-shell.density-compact .task-group .task-line{min-height:42px}
+.app-shell.density-compact .notes-workspace{min-height:min(690px,calc(100vh - 176px))}
+.app-shell.density-compact .note-editor{padding:16px 20px}
+.app-shell.density-compact .settings-panel .setting-item{min-height:77px;padding:15px 0}
+
+@media(max-width:1030px){.calendar-panel{padding:17px}.calendar-day,.calendar-blank{height:32px}}
+@media(max-width:800px){.settings-panel .setting-item{grid-template-columns:minmax(0,1fr);row-gap:14px}.settings-panel .setting-item input[type="checkbox"]{justify-self:start}.brightness-control,.density-selector{max-width:300px}}
+@media(prefers-reduced-motion:reduce){.settings-panel .setting-item input[type="checkbox"],.settings-panel .setting-item input[type="checkbox"]::after{transition:none}}

@@ -62,12 +62,90 @@ function TaskCheck({ task, toggle, compact = false }: { task: Task; toggle: (tas
   return <label className={`task-check ${compact ? "small" : ""}`}><input aria-label={`Отметить «${task.title}»`} type="checkbox" checked={!!task.doneAt} onChange={() => toggle(task)}/><span className="check-visual"><Icon name="check" size={13}/></span></label>;
 }
 
+
+function CalendarPanel({ tasks, toggle, onCreate }: { tasks: Task[]; toggle: (task: Task) => void; onCreate: (day: string) => void }) {
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [selectedDay, setSelectedDay] = useState(today);
+  const firstWeekday = (month.getDay() + 6) % 7;
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const monthDays = Array.from({ length: firstWeekday + daysInMonth }, (_, index) => index - firstWeekday + 1);
+  const markers = new Map<string, { total: number; open: number }>();
+  for (const task of tasks) {
+    if (!task.deadline) continue;
+    const marker = markers.get(task.deadline) ?? { total: 0, open: 0 };
+    marker.total += 1;
+    if (!task.doneAt) marker.open += 1;
+    markers.set(task.deadline, marker);
+  }
+  const selectedTasks = tasks.filter(task => task.deadline === selectedDay)
+    .sort((a, b) => Number(!!a.doneAt) - Number(!!b.doneAt) || sortTasks(a, b));
+  const setMonthOffset = (offset: number) => {
+    const next = new Date(month.getFullYear(), month.getMonth() + offset, 1);
+    setMonth(next);
+    setSelectedDay(isoDay(next));
+  };
+  const resetToToday = () => {
+    const d = new Date();
+    setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setSelectedDay(isoDay(d));
+  };
+  const dateHeading = new Date(`${selectedDay}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return <section className="glass-panel calendar-panel" aria-label="Календарь дедлайнов">
+    <div className="calendar-header"><h2>Календарь</h2><button type="button" className="calendar-today" onClick={resetToToday}>Сегодня</button></div>
+    <div className="calendar-month-row">
+      <span>{month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</span>
+      <div className="calendar-navigation">
+        <button type="button" className="calendar-prev" aria-label="Предыдущий месяц" onClick={() => setMonthOffset(-1)}><Icon name="chevron" size={17}/></button>
+        <button type="button" aria-label="Следующий месяц" onClick={() => setMonthOffset(1)}><Icon name="chevron" size={17}/></button>
+      </div>
+    </div>
+    <div className="calendar-weekdays">{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(label => <span key={label}>{label}</span>)}</div>
+    <div className="calendar-grid">
+      {monthDays.map((day, index) => {
+        if (day < 1) return <span key={`blank-${index}`} className="calendar-blank" aria-hidden="true"/>;
+        const key = isoDay(new Date(month.getFullYear(), month.getMonth(), day));
+        const marker = markers.get(key);
+        const isToday = key === today();
+        return <button key={key} type="button"
+          className={`calendar-day ${selectedDay === key ? "selected" : ""} ${isToday ? "today" : ""}`}
+          aria-pressed={selectedDay === key}
+          aria-label={`${day} ${month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}${marker ? `, задач: ${marker.total}` : ""}`}
+          onClick={() => setSelectedDay(key)}>
+          <span>{day}</span>
+          {marker && <span className={`calendar-dot ${marker.open ? "" : "completed"}`} aria-hidden="true"/>}
+        </button>;
+      })}
+    </div>
+    <div className="calendar-day-details">
+      <div className="calendar-detail-heading">
+        <strong>{dateHeading}</strong>
+        <button type="button" title="Создать задачу на выбранную дату" onClick={() => onCreate(selectedDay)}><Icon name="plus" size={15}/> Задача</button>
+      </div>
+      <div className="calendar-task-list">
+        {selectedTasks.length ? selectedTasks.map(task => <div className={`calendar-task ${task.doneAt ? "completed" : ""}`} key={task.id}>
+          <TaskCheck task={task} toggle={toggle} compact/>
+          <span>{task.title}</span>
+        </div>) : <p className="calendar-empty">На этот день задач нет.</p>}
+      </div>
+    </div>
+  </section>;
+}
+
 function App() {
   const [section, setSection] = useState<Section>(() => {
     const saved = safeSetting("pd-section", "home"); return (["home", "daily", "notes", "settings"].includes(saved) ? saved : "home") as Section;
   });
   const [name, setName] = useState(() => safeSetting("pd-name", "Максим"));
   const [showBackground, setShowBackground] = useState(() => safeSetting("pd-background", "on") !== "off");
+  const [backgroundBrightness, setBackgroundBrightness] = useState(() => {
+    const stored = Number(safeSetting("pd-background-brightness", "77"));
+    return Number.isFinite(stored) ? Math.min(110, Math.max(35, Math.round(stored))) : 77;
+  });
+  const [density, setDensity] = useState<"normal" | "compact">(() => safeSetting("pd-density", "normal") === "compact" ? "compact" : "normal");
+  const [clockDay, setClockDay] = useState(today);
   const [groups, setGroups] = useState<Group[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -109,6 +187,13 @@ function App() {
   useEffect(() => {
     Promise.all([reloadTasks(), reloadNotes()]).catch(e => setError(String(e))).finally(() => setLoaded(true));
     return () => flushNotes();
+  }, []);
+  useEffect(() => {
+    const refreshDay = window.setInterval(() => setClockDay(previous => {
+      const next = today();
+      return previous === next ? previous : next;
+    }), 60_000);
+    return () => window.clearInterval(refreshDay);
   }, []);
   const go = (value: Section) => { flushNotes(); setSection(value); try { localStorage.setItem("pd-section", value); } catch { /* private mode */ } };
   const runTasks = async (fn: () => Promise<unknown>) => {
@@ -193,7 +278,7 @@ function App() {
       setDialogBusy(false);
     }
   };
-  const currentDay = today();
+  const currentDay = clockDay;
   const active = tasks.filter(t => !t.doneAt).sort(sortTasks);
   const dueSoon = active.filter(t => t.deadline).slice(0, 4);
   const homeTasks = tasks.filter(t => (!!t.doneAt && t.doneAt.slice(0, 10) === currentDay) || (!t.doneAt && (!t.deadline || t.deadline <= currentDay))).sort((a, b) => Number(!!a.doneAt) - Number(!!b.doneAt) || sortTasks(a, b)).slice(0, 7);
@@ -201,7 +286,7 @@ function App() {
   const withinWeek = active.filter(t => !!t.deadline && t.deadline > currentDay && t.deadline <= isoDay(afterToday));
   const later = active.filter(t => !!t.deadline && t.deadline > isoDay(afterToday));
   const changeSection = (s: Section) => { go(s); if (s !== "daily") setShowTaskForm(false); };
-  const dateLabel = new Date().toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" });
+  const dateLabel = new Date(`${currentDay}T12:00:00`).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" });
 
   const renderTask = (t: Task, compact = false) => <div key={t.id} className={`task-line ${t.doneAt ? "completed" : ""} ${compact ? "compact" : ""}`} draggable={!compact} onDragStart={() => { draggingId.current = t.id; }} onDragEnd={() => { draggingId.current = null; }}>
     <TaskCheck task={t} toggle={toggle} compact={compact}/>
@@ -232,6 +317,7 @@ function App() {
       </section>}
     </div><div className="home-right">
       <section className="glass-panel quick-note"><h2>Быстрая заметка</h2><div className="quick-input-wrap"><textarea aria-label="Быстрая заметка" placeholder="Записать мысль…" value={quickText} onChange={e => setQuickText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void quickSave(); } }}/><button disabled={!quickText.trim() || busyNote} type="button" title="Сохранить заметку (⌘ Enter)" onClick={() => void quickSave()}><Icon name="arrow" size={18}/></button></div></section>
+      <CalendarPanel tasks={tasks} toggle={toggle} onCreate={day => { setTaskDate(day); changeSection("daily"); setShowTaskForm(true); }}/>
       {dueSoon.length > 0 && <section className="glass-panel upcoming"><div className="panel-heading"><h2>Ближайшие дела</h2></div>{dueSoon.map(t => <button type="button" key={t.id} className="upcoming-row" onClick={() => changeSection("daily")}><span className="event-icon"><Icon name="calendar"/></span><span><small>{t.deadline ? formatDate(t.deadline) : ""}</small><strong>{t.title}</strong></span></button>)}</section>}
     </div></div>
   </div>;
@@ -274,9 +360,39 @@ function App() {
     </div>
   </div>;
 
-  const settings = <div className="page settings-page"><div className="page-header"><div><h1>Настройки</h1></div></div><section className="glass-panel settings-panel"><label className="setting-item"><span><b>Твоё имя</b><small>Показывается в приветствии на главной.</small></span><input placeholder="Как к тебе обращаться?" value={name} onChange={e => { setName(e.target.value); try { localStorage.setItem("pd-name", e.target.value); } catch { /* no storage */ } }}/></label><label className="setting-item"><span><b>Фон «Тёплый вечер»</b><small>Убери фотографию, если нужен более спокойный интерфейс.</small></span><input type="checkbox" checked={showBackground} onChange={e => { setShowBackground(e.target.checked); try { localStorage.setItem("pd-background", e.target.checked ? "on" : "off"); } catch { /* no storage */ } }}/></label></section></div>;
+  const settings = <div className="page settings-page">
+    <div className="page-header"><h1>Настройки</h1></div>
+    <section className="glass-panel settings-panel">
+      <label className="setting-item">
+        <span><b>Твоё имя</b><small>Показывается на главной странице.</small></span>
+        <input type="text" placeholder="Имя" value={name} onChange={e => { setName(e.target.value); try { localStorage.setItem("pd-name", e.target.value); } catch { /* no storage */ } }}/>
+      </label>
+      <label className="setting-item">
+        <span><b>Фоновое изображение</b><small>Показывать фотографию на фоне.</small></span>
+        <input type="checkbox" role="switch" checked={showBackground} onChange={e => { setShowBackground(e.target.checked); try { localStorage.setItem("pd-background", e.target.checked ? "on" : "off"); } catch { /* no storage */ } }}/>
+      </label>
+      <label className="setting-item">
+        <span><b>Яркость фона</b><small>Делает фотографию светлее или темнее.</small></span>
+        <div className="brightness-control"><input type="range" aria-label="Яркость фона" min={35} max={110} step={1} value={backgroundBrightness} disabled={!showBackground} onChange={e => {
+          const value = Number(e.target.value);
+          setBackgroundBrightness(value);
+          try { localStorage.setItem("pd-background-brightness", String(value)); } catch { /* no storage */ }
+        }}/><output>{backgroundBrightness}%</output></div>
+      </label>
+      <div className="setting-item">
+        <span><b>Плотность интерфейса</b><small>Размеры отступов и строк в списках.</small></span>
+        <div className="density-selector" role="group" aria-label="Плотность интерфейса">
+          {(["normal", "compact"] as const).map(value => <button key={value} type="button" aria-pressed={density === value} className={density === value ? "selected" : ""} onClick={() => {
+            setDensity(value);
+            try { localStorage.setItem("pd-density", value); } catch { /* no storage */ }
+          }}>{value === "normal" ? "Обычная" : "Компактная"}</button>)}
+        </div>
+      </div>
+    </section>
+  </div>;
 
-  return <div className={`app-shell ${showBackground ? "photo-background" : "plain-background"}`}>
+  return <div className={`app-shell ${showBackground ? "photo-background" : "plain-background"} ${density === "compact" ? "density-compact" : ""}`}
+    style={{ "--wallpaper-brightness": (backgroundBrightness / 100).toFixed(2) } as import("react").CSSProperties}>
     <SideBar section={section} go={changeSection}/>
     <main className="main-area">
       {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => setError(null)}>×</button></div>}
