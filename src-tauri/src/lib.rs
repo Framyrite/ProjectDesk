@@ -18,13 +18,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
-            let open_item = MenuItem::with_id(app, "open", "Открыть Деловик", true, None::<&str>)?;
+            let open_item = MenuItem::with_id(app, "open", "Открыть ProjectDesk", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("no default icon").clone())
-                .tooltip("Деловик :0")
+                .tooltip("ProjectDesk")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
