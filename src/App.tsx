@@ -280,11 +280,8 @@ function App() {
   };
   const currentDay = clockDay;
   const active = tasks.filter(t => !t.doneAt).sort(sortTasks);
-  const dueSoon = active.filter(t => t.deadline).slice(0, 4);
+  const dueSoon = active.filter(t => t.deadline).slice(0, 6);
   const homeTasks = tasks.filter(t => (!!t.doneAt && t.doneAt.slice(0, 10) === currentDay) || (!t.doneAt && (!t.deadline || t.deadline <= currentDay))).sort((a, b) => Number(!!a.doneAt) - Number(!!b.doneAt) || sortTasks(a, b)).slice(0, 7);
-  const afterToday = new Date(); afterToday.setDate(afterToday.getDate() + 7);
-  const withinWeek = active.filter(t => !!t.deadline && t.deadline > currentDay && t.deadline <= isoDay(afterToday));
-  const later = active.filter(t => !!t.deadline && t.deadline > isoDay(afterToday));
   const changeSection = (s: Section) => { go(s); if (s !== "daily") setShowTaskForm(false); };
   const dateLabel = new Date(`${currentDay}T12:00:00`).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" });
 
@@ -300,26 +297,29 @@ function App() {
 
   const home = <div className="page home-page">
     <header className="hero"><div className="hero-text"><h1>{timeOfDay(new Date())}{name.trim() ? `, ${name.trim()}` : ""}</h1><p>{dateLabel}</p></div></header>
-    <div className="home-grid"><div className="home-left">
-      <section className="glass-panel today-panel"><div className="panel-heading"><h2>Сегодня</h2>{homeTasks.length > 0 && <button type="button" className="subtle-count" onClick={() => changeSection("daily")}>{homeTasks.filter(t => t.doneAt).length} из {homeTasks.length}</button>}</div>
-        {homeTasks.length ? homeTasks.map(t => renderTask(t, true)) : <div className="empty-state">На сегодня ничего не запланировано.</div>}
+    <div className="home-grid">
+      <section className="glass-panel today-panel">
+        <div className="panel-heading"><h2>Сегодня</h2>{homeTasks.length > 0 && <button type="button" className="subtle-count" onClick={() => changeSection("daily")}>{homeTasks.filter(t => t.doneAt).length} из {homeTasks.length}</button>}</div>
+        <div className="today-task-list">
+          {homeTasks.length ? homeTasks.map(t => renderTask(t, true)) : <div className="empty-state">На сегодня ничего не запланировано.</div>}
+        </div>
         <button type="button" className="text-action" onClick={() => { changeSection("daily"); setShowTaskForm(true); }}><Icon name="plus" size={16}/> Добавить задачу</button>
       </section>
-      {(withinWeek.length > 0 || later.length > 0) && <section className="glass-panel summary-rows">
-        {withinWeek.length > 0 && <>
-          <button type="button" className="summary-toggle" aria-expanded={!!expanded.week} onClick={() => setExpanded(x => ({ ...x, week: !x.week }))}><Icon name="chevron" size={18}/><b>На этой неделе</b><span className="section-count">{withinWeek.length}</span></button>
-          <Disclosure open={!!expanded.week}><div className="summary-body">{withinWeek.map(t => renderTask(t, true))}</div></Disclosure>
-        </>}
-        {later.length > 0 && <>
-          <button type="button" className="summary-toggle" aria-expanded={!!expanded.later} onClick={() => setExpanded(x => ({ ...x, later: !x.later }))}><Icon name="chevron" size={18}/><b>Позже</b><span className="section-count">{later.length}</span></button>
-          <Disclosure open={!!expanded.later}><div className="summary-body">{later.map(t => renderTask(t, true))}</div></Disclosure>
-        </>}
-      </section>}
-    </div><div className="home-right">
-      <section className="glass-panel quick-note"><h2>Быстрая заметка</h2><div className="quick-input-wrap"><textarea aria-label="Быстрая заметка" placeholder="Записать мысль…" value={quickText} onChange={e => setQuickText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void quickSave(); } }}/><button disabled={!quickText.trim() || busyNote} type="button" title="Сохранить заметку (⌘ Enter)" onClick={() => void quickSave()}><Icon name="arrow" size={18}/></button></div></section>
+      <section className="glass-panel quick-note">
+        <h2>Быстрая заметка</h2>
+        <div className="quick-input-wrap">
+          <textarea aria-label="Быстрая заметка" placeholder="Записать мысль…" value={quickText} onChange={e => setQuickText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void quickSave(); } }}/>
+          <button disabled={!quickText.trim() || busyNote} type="button" title="Сохранить заметку (⌘ Enter)" onClick={() => void quickSave()}><Icon name="arrow" size={18}/></button>
+        </div>
+      </section>
+      <section className="glass-panel upcoming" aria-label="Ближайшие дела">
+        <div className="panel-heading"><h2>Ближайшие дела</h2></div>
+        <div className="upcoming-task-list">
+          {dueSoon.length ? dueSoon.map(t => renderTask(t, true)) : <p className="empty-state">Ближайших дел нет.</p>}
+        </div>
+      </section>
       <CalendarPanel tasks={tasks} toggle={toggle} onCreate={day => { setTaskDate(day); changeSection("daily"); setShowTaskForm(true); }}/>
-      {dueSoon.length > 0 && <section className="glass-panel upcoming"><div className="panel-heading"><h2>Ближайшие дела</h2></div>{dueSoon.map(t => <button type="button" key={t.id} className="upcoming-row" onClick={() => changeSection("daily")}><span className="event-icon"><Icon name="calendar"/></span><span><small>{t.deadline ? formatDate(t.deadline) : ""}</small><strong>{t.title}</strong></span></button>)}</section>}
-    </div></div>
+    </div>
   </div>;
 
   const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate() + 7);
